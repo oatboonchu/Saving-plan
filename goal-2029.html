@@ -13,7 +13,7 @@
     --danger: #b5453f;
   }
   @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-theme="light"]) {
       --bg-page: #1c1c1a;
       --bg-card: #2a2a27;
       --bg-card-2: #232320;
@@ -25,6 +25,18 @@
       --accent-bg: #0c447c;
       --danger: #e2867f;
     }
+  }
+  :root[data-theme="dark"] {
+    --bg-page: #1c1c1a;
+    --bg-card: #2a2a27;
+    --bg-card-2: #232320;
+    --text-1: #f2f1ec;
+    --text-2: #b4b2a9;
+    --text-3: #888780;
+    --border-c: #444441;
+    --accent: #85b7eb;
+    --accent-bg: #0c447c;
+    --danger: #e2867f;
   }
   body { background: var(--bg-page); margin:0; }
   .tk-wrap { color: var(--text-1); }
@@ -53,7 +65,7 @@
   button:disabled { opacity: 0.5; cursor: default; transform:none; box-shadow:none; }
 </style>
 
-<div class="tk-wrap" style="max-width:480px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;padding:12px;box-sizing:border-box;">
+<div class="tk-wrap" style="max-width:480px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;padding:16px;box-sizing:border-box;">
 
   <div style="padding:0.25rem 0 1.25rem;">
     <h1 style="font-size:20px;font-weight:500;margin:0 0 4px;">Goal 2029</h1>
@@ -173,19 +185,37 @@ let goalOrder = DEFAULT_ORDER.slice();
 let data = {};
 let portfolio = {};
 let priceApiKey = "";
+let db = null;
+
+async function dbGet(path){
+  if(!db) return null;
+  try{
+    const snap = await db.doc(path).get();
+    return snap.exists ? snap.data() : null;
+  }catch(e){ return null; }
+}
+
+async function dbSet(path, value, attempt){
+  if(!db) return false;
+  attempt = attempt || 1;
+  try{
+    await db.doc(path).set(value);
+    return true;
+  }catch(e){
+    if(attempt<3){ await new Promise(r=>setTimeout(r,400*attempt)); return dbSet(path, value, attempt+1); }
+    return false;
+  }
+}
 
 async function loadGoalOrder(){
-  try{
-    const r = await window.storage.get("goals:order", false);
-    const parsed = r ? JSON.parse(r.value) : null;
-    if(parsed && Array.isArray(parsed.order) && parsed.order.length===DEFAULT_ORDER.length){
-      goalOrder = parsed.order;
-    }
-  }catch(e){ /* keep default */ }
+  const parsed = await dbGet("state/goals");
+  if(parsed && Array.isArray(parsed.order) && parsed.order.length===DEFAULT_ORDER.length){
+    goalOrder = parsed.order;
+  }
 }
 
 async function saveGoalOrder(){
-  try{ await window.storage.set("goals:order", JSON.stringify({order:goalOrder}), false); }catch(e){}
+  await dbSet("state/goals", {order:goalOrder});
 }
 
 function moveGoal(key, dir){
@@ -199,65 +229,38 @@ function moveGoal(key, dir){
 let bankingCash = 3000;
 
 async function loadBanking(){
-  try{
-    const r = await window.storage.get("banking:cash", false);
-    bankingCash = r ? JSON.parse(r.value).amount : 3000;
-  }catch(e){ bankingCash = 3000; }
+  const r = await dbGet("state/banking");
+  bankingCash = r && r.amount!=null ? r.amount : 3000;
 }
 
 async function saveBanking(){
-  const ok = await (async function retry(attempt){
-    attempt = attempt || 1;
-    try{
-      const result = await window.storage.set("banking:cash", JSON.stringify({amount: bankingCash}), false);
-      if(!result) throw new Error("no result");
-      return true;
-    }catch(e){
-      if(attempt<3){ await new Promise(r=>setTimeout(r,400*attempt)); return retry(attempt+1); }
-      return false;
-    }
-  })();
+  const ok = await dbSet("state/banking", {amount: bankingCash});
   showSaveStatus(ok);
   renderStats();
 }
 
 async function loadPortfolio(){
-  try{
-    const r = await window.storage.get("portfolio:now", false);
-    portfolio = r ? JSON.parse(r.value) : null;
-  }catch(e){ portfolio = null; }
-  if(!portfolio) portfolio = {};
+  const r = await dbGet("state/portfolio");
+  portfolio = r || {};
   HOLDINGS.forEach(h=>{
     if(!portfolio[h]) portfolio[h] = { shares: DEFAULT_PORTFOLIO[h].shares, price: DEFAULT_PORTFOLIO[h].price };
   });
 }
 
 async function savePortfolio(){
-  const ok = await (async function retry(attempt){
-    attempt = attempt || 1;
-    try{
-      const result = await window.storage.set("portfolio:now", JSON.stringify(portfolio), false);
-      if(!result) throw new Error("no result");
-      return true;
-    }catch(e){
-      if(attempt<3){ await new Promise(r=>setTimeout(r,400*attempt)); return retry(attempt+1); }
-      return false;
-    }
-  })();
+  const ok = await dbSet("state/portfolio", portfolio);
   showSaveStatus(ok);
   renderPortfolioTotal();
   renderStats();
 }
 
 async function loadPriceApiKey(){
-  try{
-    const r = await window.storage.get("settings:priceApiKey", false);
-    priceApiKey = r ? JSON.parse(r.value).key : "";
-  }catch(e){ priceApiKey = ""; }
+  const r = await dbGet("state/settings");
+  priceApiKey = r && r.key ? r.key : "";
 }
 
 async function savePriceApiKey(){
-  try{ await window.storage.set("settings:priceApiKey", JSON.stringify({key: priceApiKey}), false); }catch(e){}
+  await dbSet("state/settings", {key: priceApiKey});
 }
 
 function setPriceStatus(msg, isError){
@@ -359,36 +362,19 @@ function renderPortfolioInputs(){
   });
 }
 
+function monthPath(key){ return "months/"+key.slice(6); }
+
 async function loadAll(){
   for(const d of months){
     const key = "month:"+ym(d);
-    let existing = null;
-    try{
-      const r = await window.storage.get(key, false);
-      existing = r ? JSON.parse(r.value) : null;
-    }catch(e){ existing = null; }
+    const existing = await dbGet(monthPath(key));
     data[key] = existing || { jepqAdd:"", cash:false, note:"" };
   }
   render();
 }
 
-async function saveWithRetry(key, attempt){
-  attempt = attempt || 1;
-  try{
-    const result = await window.storage.set(key, JSON.stringify(data[key]), false);
-    if(!result) throw new Error("no result returned");
-    return true;
-  }catch(e){
-    if(attempt < 3){
-      await new Promise(r=>setTimeout(r, 400*attempt));
-      return saveWithRetry(key, attempt+1);
-    }
-    return false;
-  }
-}
-
 async function save(key){
-  const ok = await saveWithRetry(key);
+  const ok = await dbSet(monthPath(key), data[key]);
   showSaveStatus(ok);
   renderStats();
 }
@@ -530,15 +516,15 @@ document.getElementById("refresh-prices-btn").addEventListener("click", fetchLiv
 
 document.getElementById("reset-btn").addEventListener("click", async ()=>{
   goalOrder = DEFAULT_ORDER.slice();
-  try{ await window.storage.set("goals:order", JSON.stringify({order:goalOrder}), false); }catch(e){}
+  await dbSet("state/goals", {order:goalOrder});
   HOLDINGS.forEach(h=>{ portfolio[h] = { shares: DEFAULT_PORTFOLIO[h].shares, price: DEFAULT_PORTFOLIO[h].price }; });
-  try{ await window.storage.set("portfolio:now", JSON.stringify(portfolio), false); }catch(e){}
+  await dbSet("state/portfolio", portfolio);
   bankingCash = 3000;
-  try{ await window.storage.set("banking:cash", JSON.stringify({amount:3000}), false); }catch(e){}
+  await dbSet("state/banking", {amount:3000});
   for(const d of months){
     const key = "month:"+ym(d);
     data[key] = { jepqAdd:"", cash:false, note:"" };
-    try{ await window.storage.set(key, JSON.stringify(data[key]), false); }catch(e){}
+    await dbSet(monthPath(key), data[key]);
   }
   render();
 });
@@ -580,20 +566,23 @@ document.getElementById("backup-load").addEventListener("click", async ()=>{
   let successCount = 0, failCount = 0;
   if(parsed.portfolio){
     portfolio = parsed.portfolio;
-    try{ await window.storage.set("portfolio:now", JSON.stringify(portfolio), false); successCount++; }catch(e){ failCount++; }
+    const ok = await dbSet("state/portfolio", portfolio);
+    if(ok) successCount++; else failCount++;
   }
   if(parsed.banking){
     bankingCash = parsed.banking.amount;
-    try{ await window.storage.set("banking:cash", JSON.stringify(parsed.banking), false); successCount++; }catch(e){ failCount++; }
+    const ok = await dbSet("state/banking", parsed.banking);
+    if(ok) successCount++; else failCount++;
   }
   if(parsed.goalOrder && Array.isArray(parsed.goalOrder)){
     goalOrder = parsed.goalOrder;
-    try{ await window.storage.set("goals:order", JSON.stringify({order:goalOrder}), false); successCount++; }catch(e){ failCount++; }
+    const ok = await dbSet("state/goals", {order:goalOrder});
+    if(ok) successCount++; else failCount++;
   }
   if(parsed.months){
     for(const key in parsed.months){
       data[key] = parsed.months[key];
-      const ok = await saveWithRetry(key);
+      const ok = await dbSet(monthPath(key), data[key]);
       if(ok) successCount++; else failCount++;
     }
   }
@@ -604,6 +593,7 @@ document.getElementById("backup-load").addEventListener("click", async ()=>{
 });
 
 (async function init(){
+  db = window.claude ? await window.claude.use("db") : null;
   await loadGoalOrder();
   await loadPortfolio();
   await loadBanking();
