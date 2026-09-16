@@ -96,7 +96,7 @@
     <div style="display:flex;align-items:center;justify-content:flex-end;margin-bottom:10px;">
       <button id="refresh-prices-btn" style="font-size:12px;white-space:nowrap;color:var(--accent);">ดึงราคาล่าสุด</button>
     </div>
-    <p id="price-status" style="font-size:11px;color:var(--text-3);margin:0 0 10px;">ดึงราคาหุ้นจริงผ่าน Twelve Data connector ให้อัตโนมัติวันละครั้ง (วันไหนไม่เปิดดูก็ไม่ดึง) กดปุ่มเพื่อดึงราคาล่าสุดเองได้ทุกเมื่อ</p>
+    <p id="price-status" style="font-size:11px;color:var(--text-3);margin:0 0 10px;">กดปุ่ม "ดึงราคาล่าสุด" เพื่อดึงราคาหุ้นจริงผ่าน Twelve Data connector (ไม่ดึงอัตโนมัติ ประหยัดโควต้า)</p>
 
     <div style="display:grid;grid-template-columns:44px 1fr 1fr 64px;gap:6px;margin-bottom:6px;">
       <span></span>
@@ -185,12 +185,6 @@ let data = {};
 let portfolio = {};
 let db = null;
 let mcp = null;
-let lastFetchDate = "";
-
-function todayStr(){
-  const d = new Date();
-  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
-}
 
 async function dbGet(path){
   if(!db) return null;
@@ -259,16 +253,6 @@ async function savePortfolio(){
   renderStats();
 }
 
-async function loadPriceMeta(){
-  const r = await dbGet("state/priceMeta");
-  lastFetchDate = r && r.lastFetchDate ? r.lastFetchDate : "";
-}
-
-async function savePriceMeta(){
-  lastFetchDate = todayStr();
-  await dbSet("state/priceMeta", {lastFetchDate});
-}
-
 function setPriceStatus(msg, isError){
   const el = document.getElementById("price-status");
   if(!el) return;
@@ -325,7 +309,6 @@ async function fetchLivePrices(){
 
   if(updated>0){
     await savePortfolio();
-    await savePriceMeta();
     renderPortfolioInputs();
   }
 
@@ -618,15 +601,10 @@ document.getElementById("backup-load").addEventListener("click", async ()=>{
   await loadGoalOrder();
   await loadPortfolio();
   await loadBanking();
-  await loadPriceMeta();
   await loadAll();
   document.getElementById("banking-cash").addEventListener("change", e=>{
     bankingCash = e.target.value;
     saveBanking();
   });
-
-  if(mcp && lastFetchDate !== todayStr()){
-    fetchLivePrices();
-  }
 })();
 </script>
