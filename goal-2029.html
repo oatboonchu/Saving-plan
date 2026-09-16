@@ -93,11 +93,10 @@
   <div style="background:var(--bg-card);border-radius:14px;padding:1rem 1.1rem;margin-bottom:0.65rem;box-shadow:0 1px 2px rgba(0,0,0,0.04);">
     <p style="font-size:14px;font-weight:500;margin:0 0 10px;">พอร์ตหุ้น</p>
 
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-      <input type="password" id="api-key" placeholder="Twelve Data API key" style="flex:1;font-size:12px;box-sizing:border-box;" autocomplete="off" />
+    <div style="display:flex;align-items:center;justify-content:flex-end;margin-bottom:10px;">
       <button id="refresh-prices-btn" style="font-size:12px;white-space:nowrap;color:var(--accent);">ดึงราคาล่าสุด</button>
     </div>
-    <p id="price-status" style="font-size:11px;color:var(--text-3);margin:0 0 10px;">ใส่ API key ฟรีจาก twelvedata.com ครั้งเดียว ระบบจะดึงราคาหุ้นจริงให้อัตโนมัติทุกครั้งที่เปิดหน้านี้ (รีเฟรชอัตโนมัติทุก 5 นาที)</p>
+    <p id="price-status" style="font-size:11px;color:var(--text-3);margin:0 0 10px;">ดึงราคาหุ้นจริงผ่าน Twelve Data connector อัตโนมัติทุกครั้งที่เปิดหน้านี้ (รีเฟรชอัตโนมัติทุก 5 นาที)</p>
 
     <div style="display:grid;grid-template-columns:44px 1fr 1fr 64px;gap:6px;margin-bottom:6px;">
       <span></span>
@@ -164,7 +163,7 @@ const DEFAULT_PORTFOLIO = {
   AMD:  { shares: 1.00,  price: 495.00 }
 };
 const HOLDINGS = Object.keys(DEFAULT_PORTFOLIO);
-const PRICE_API_BASE = "https://api.twelvedata.com/price";
+const PRICE_SERVER = "Twelve Data";
 
 function ym(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0"); }
 function monthIndex(d){ return d.getFullYear()*12 + d.getMonth(); }
@@ -184,8 +183,8 @@ const nowIdx = monthIndex(now);
 let goalOrder = DEFAULT_ORDER.slice();
 let data = {};
 let portfolio = {};
-let priceApiKey = "";
 let db = null;
+let mcp = null;
 
 async function dbGet(path){
   if(!db) return null;
@@ -254,15 +253,6 @@ async function savePortfolio(){
   renderStats();
 }
 
-async function loadPriceApiKey(){
-  const r = await dbGet("state/settings");
-  priceApiKey = r && r.key ? r.key : "";
-}
-
-async function savePriceApiKey(){
-  await dbSet("state/settings", {key: priceApiKey});
-}
-
 function setPriceStatus(msg, isError){
   const el = document.getElementById("price-status");
   if(!el) return;
@@ -270,15 +260,24 @@ function setPriceStatus(msg, isError){
   el.style.color = isError ? "var(--danger)" : "var(--text-3)";
 }
 
+function mcpErrorMessage(code){
+  switch(code){
+    case "needs_reauth": return "การเชื่อมต่อ Twelve Data หมดอายุ กรุณาเชื่อมต่อใหม่ใน claude.ai Settings → Connectors";
+    case "server_not_connected": return "ยังไม่ได้เชื่อมต่อ Twelve Data กรุณาเพิ่มใน claude.ai Settings → Connectors";
+    case "selection_required": return "มีการเชื่อมต่อ Twelve Data มากกว่า 1 บัญชี กรุณาเลือกในหน้าต่างที่เด้งขึ้น";
+    case "consent_required": return "กรุณาอนุญาตให้หน้านี้ใช้งาน Twelve Data connector";
+    case "blocked_by_policy": return "องค์กรบล็อกการใช้งาน Twelve Data สำหรับบัญชีนี้";
+    case "approval_required": return "การใช้งาน Twelve Data ต้องรออนุมัติก่อน";
+    case "server_unavailable": return "เซิร์ฟเวอร์ Twelve Data ไม่ตอบสนอง ลองใหม่อีกครั้ง";
+    default: return "ดึงราคาไม่สำเร็จ ลองกด \"ดึงราคาล่าสุด\" อีกครั้ง";
+  }
+}
+
 async function fetchLivePrices(){
-  const keyInput = document.getElementById("api-key");
-  const key = (keyInput.value || "").trim();
-  if(!key){
-    setPriceStatus("กรุณาใส่ API key ก่อน (ขอฟรีได้ที่ twelvedata.com)", true);
+  if(!mcp){
+    setPriceStatus("หน้านี้ยังใช้ Twelve Data connector ไม่ได้ (ต้องเปิดผ่าน Claude)", true);
     return;
   }
-  priceApiKey = key;
-  savePriceApiKey();
 
   const btn = document.getElementById("refresh-prices-btn");
   const originalLabel = btn.textContent;
@@ -286,40 +285,44 @@ async function fetchLivePrices(){
   btn.textContent = "กำลังดึงราคา...";
   setPriceStatus("กำลังดึงราคาล่าสุด...", false);
 
-  try{
-    const url = PRICE_API_BASE + "?symbol=" + encodeURIComponent(HOLDINGS.join(",")) + "&apikey=" + encodeURIComponent(key);
-    const res = await fetch(url);
-    const json = await res.json();
+  const results = await Promise.allSettled(
+    HOLDINGS.map(h => mcp.callTool(PRICE_SERVER, "get_price", { symbol: h }, { cache: { refresh: true } }))
+  );
 
-    if(json && json.status === "error"){
-      throw new Error(json.message || "ดึงราคาไม่สำเร็จ");
-    }
-
-    let updated = 0;
-    HOLDINGS.forEach(h=>{
-      const entry = HOLDINGS.length===1 ? json : json[h];
-      const price = entry && entry.price!=null ? Number(entry.price) : NaN;
+  let updated = 0;
+  let errCode = null;
+  results.forEach((r, i)=>{
+    const h = HOLDINGS[i];
+    if(r.status === "fulfilled"){
+      const raw = r.value.payload && r.value.payload.result;
+      const lines = String(raw||"").trim().split("\n");
+      const price = Number(lines[lines.length-1]);
       if(!isNaN(price) && price>0){
         if(!portfolio[h]) portfolio[h] = { shares:"", price:"" };
         portfolio[h].price = price;
         updated++;
       }
-    });
-
-    if(updated===0){
-      throw new Error("ไม่พบราคาหุ้นที่ตรงกัน ตรวจสอบ API key หรือโควต้าการใช้งาน");
+    } else {
+      errCode = r.reason && r.reason.code;
     }
+  });
 
+  if(updated>0){
     await savePortfolio();
     renderPortfolioInputs();
-    const stamp = new Date().toLocaleTimeString("th-TH", {hour:"2-digit", minute:"2-digit"});
-    setPriceStatus("อัพเดทราคาแล้ว " + updated + "/" + HOLDINGS.length + " ตัว · " + stamp, false);
-  }catch(e){
-    setPriceStatus("ดึงราคาไม่สำเร็จ: " + e.message, true);
-  }finally{
-    btn.disabled = false;
-    btn.textContent = originalLabel;
   }
+
+  const stamp = new Date().toLocaleTimeString("th-TH", {hour:"2-digit", minute:"2-digit"});
+  if(updated === HOLDINGS.length){
+    setPriceStatus("อัพเดทราคาแล้วครบ " + updated + " ตัว · " + stamp, false);
+  } else if(updated>0){
+    setPriceStatus("อัพเดทราคาแล้ว " + updated + "/" + HOLDINGS.length + " ตัว · " + stamp, false);
+  } else {
+    setPriceStatus(mcpErrorMessage(errCode), true);
+  }
+
+  btn.disabled = false;
+  btn.textContent = originalLabel;
 }
 
 function portfolioTotal(){
@@ -594,18 +597,17 @@ document.getElementById("backup-load").addEventListener("click", async ()=>{
 
 (async function init(){
   db = window.claude ? await window.claude.use("db") : null;
+  mcp = window.claude ? await window.claude.use("mcp") : null;
   await loadGoalOrder();
   await loadPortfolio();
   await loadBanking();
-  await loadPriceApiKey();
-  if(priceApiKey) document.getElementById("api-key").value = priceApiKey;
   await loadAll();
   document.getElementById("banking-cash").addEventListener("change", e=>{
     bankingCash = e.target.value;
     saveBanking();
   });
 
-  if(priceApiKey){
+  if(mcp){
     fetchLivePrices();
     setInterval(fetchLivePrices, 5*60*1000);
   }
