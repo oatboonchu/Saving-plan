@@ -97,7 +97,7 @@
       <input type="password" id="api-key" placeholder="Twelve Data API key" style="flex:1;font-size:12px;box-sizing:border-box;" autocomplete="off" />
       <button id="refresh-prices-btn" style="font-size:12px;white-space:nowrap;color:var(--accent);">ดึงราคาล่าสุด</button>
     </div>
-    <p id="price-status" style="font-size:11px;color:var(--text-3);margin:0 0 10px;">ใส่ API key ฟรีจาก twelvedata.com แล้วกด "ดึงราคาล่าสุด" เพื่อดึงราคาหุ้นจริง</p>
+    <p id="price-status" style="font-size:11px;color:var(--text-3);margin:0 0 10px;">ใส่ API key ฟรีจาก twelvedata.com ครั้งเดียว ระบบจะดึงราคาหุ้นจริงให้อัตโนมัติทุกครั้งที่เปิดหน้านี้ (รีเฟรชอัตโนมัติทุก 5 นาที)</p>
 
     <div style="display:grid;grid-template-columns:44px 1fr 1fr 64px;gap:6px;margin-bottom:6px;">
       <span></span>
@@ -604,5 +604,10 @@ document.getElementById("backup-load").addEventListener("click", async ()=>{
     bankingCash = e.target.value;
     saveBanking();
   });
+
+  if(priceApiKey){
+    fetchLivePrices();
+    setInterval(fetchLivePrices, 5*60*1000);
+  }
 })();
 </script>
