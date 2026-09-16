@@ -1,0 +1,618 @@
+<title>Goal 2029</title>
+<style>
+  :root {
+    --bg-page: #ffffff;
+    --bg-card: #f4f3ef;
+    --bg-card-2: #ffffff;
+    --text-1: #1a1a18;
+    --text-2: #5f5e5a;
+    --text-3: #8a8983;
+    --border-c: #ddddd6;
+    --accent: #185fa5;
+    --accent-bg: #e6f1fb;
+    --danger: #b5453f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg-page: #1c1c1a;
+      --bg-card: #2a2a27;
+      --bg-card-2: #232320;
+      --text-1: #f2f1ec;
+      --text-2: #b4b2a9;
+      --text-3: #888780;
+      --border-c: #444441;
+      --accent: #85b7eb;
+      --accent-bg: #0c447c;
+      --danger: #e2867f;
+    }
+  }
+  body { background: var(--bg-page); margin:0; }
+  .tk-wrap { color: var(--text-1); }
+  input[type="number"], input[type="text"], input[type="password"], textarea {
+    background: var(--bg-card-2);
+    color: var(--text-1);
+    border: 0.5px solid var(--border-c);
+    border-radius: 8px;
+    padding: 6px 8px;
+  }
+  input[type="checkbox"] { accent-color: var(--accent); cursor:pointer; transition: transform 0.08s ease; }
+  input[type="checkbox"]:active{ transform: scale(0.9); }
+  input[type="number"]:focus, input[type="password"]:focus, textarea:focus { outline:none; border-color: var(--accent); }
+  button {
+    background: var(--bg-card-2);
+    color: var(--text-1);
+    border: 0.5px solid var(--border-c);
+    border-radius: 8px;
+    padding: 8px;
+    cursor: pointer;
+    transition: transform 0.08s ease, background 0.12s ease, box-shadow 0.12s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button:hover { background: var(--bg-card); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  button:active { transform: scale(0.96); background: var(--border-c); }
+  button:disabled { opacity: 0.5; cursor: default; transform:none; box-shadow:none; }
+</style>
+
+<div class="tk-wrap" style="max-width:480px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;padding:12px;box-sizing:border-box;">
+
+  <div style="padding:0.25rem 0 1.25rem;">
+    <h1 style="font-size:20px;font-weight:500;margin:0 0 4px;">Goal 2029</h1>
+    <p style="font-size:13px;color:var(--text-2);margin:0;">ซื้อบ้าน+รถ ต.ค. 2028 · แต่งงานก่อน เม.ย. 2029</p>
+  </div>
+
+  <div style="background:var(--bg-card);border-radius:16px;padding:1.2rem 1.3rem;margin-bottom:0.75rem;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;">
+      <span style="font-size:13px;color:var(--text-2);">รวมความคืบหน้าทั้งหมด</span>
+      <span id="progress-pct" style="font-size:22px;font-weight:500;">0%</span>
+    </div>
+    <div style="height:8px;background:var(--bg-card-2);border-radius:8px;overflow:hidden;">
+      <div id="progress-bar" style="height:100%;width:0%;background:var(--accent);border-radius:8px;transition:width 0.3s;"></div>
+    </div>
+    <p style="font-size:12px;color:var(--text-3);margin:8px 0 0;" id="progress-detail"></p>
+  </div>
+
+  <div id="goal-bars" style="margin-bottom:0.25rem;"></div>
+  <p style="font-size:11px;color:var(--text-3);margin:0 0 1.25rem;">กดปุ่ม ▲▼ เพื่อสลับลำดับความสำคัญ — เงินที่มีจะเติมเป้าหมายอันดับ 1 ก่อน เหลือเท่าไหร่ค่อยไหลไปอันดับ 2, 3 ตามลำดับ</p>
+
+  <div style="margin:0 0 10px;">
+    <p style="font-size:11px;font-weight:600;letter-spacing:0.04em;color:var(--text-3);text-transform:uppercase;margin:0;">สินทรัพย์ปัจจุบัน</p>
+  </div>
+
+  <div style="background:var(--bg-card);border-radius:14px;padding:1rem 1.1rem;margin-bottom:0.65rem;box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+    <p style="font-size:14px;font-weight:500;margin:0 0 10px;">พอร์ตหุ้น</p>
+
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+      <input type="password" id="api-key" placeholder="Twelve Data API key" style="flex:1;font-size:12px;box-sizing:border-box;" autocomplete="off" />
+      <button id="refresh-prices-btn" style="font-size:12px;white-space:nowrap;color:var(--accent);">ดึงราคาล่าสุด</button>
+    </div>
+    <p id="price-status" style="font-size:11px;color:var(--text-3);margin:0 0 10px;">ใส่ API key ฟรีจาก twelvedata.com แล้วกด "ดึงราคาล่าสุด" เพื่อดึงราคาหุ้นจริง</p>
+
+    <div style="display:grid;grid-template-columns:44px 1fr 1fr 64px;gap:6px;margin-bottom:6px;">
+      <span></span>
+      <span style="font-size:10px;color:var(--text-3);">หุ้น</span>
+      <span style="font-size:10px;color:var(--text-3);">ราคา</span>
+      <span></span>
+    </div>
+    <div id="portfolio-now"></div>
+    <div style="height:1px;background:var(--border-c);margin:10px 0;"></div>
+    <p style="font-size:14px;font-weight:600;margin:0;display:flex;justify-content:space-between;">
+      <span>รวมพอร์ต</span><span id="portfolio-total">$0</span>
+    </p>
+    <p style="font-size:11px;color:var(--text-3);margin:6px 0 0;">จำนวนหุ้นแก้ไขเองได้เสมอ · ราคาดึงจาก API อัตโนมัติ หรือแก้เองได้ถ้าต้องการ</p>
+  </div>
+
+  <div style="background:var(--bg-card);border-radius:14px;padding:1rem 1.1rem;margin-bottom:1.25rem;box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+    <p style="font-size:14px;font-weight:500;margin:0 0 10px;">Banking (เงินสดในบัญชี)</p>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="font-size:13px;color:var(--text-2);">$</span>
+      <input type="number" inputmode="decimal" id="banking-cash" placeholder="0" style="flex:1;font-size:15px;font-weight:500;" />
+    </div>
+  </div>
+
+  <p id="save-status" style="display:none;font-size:12px;color:var(--danger);background:var(--bg-card);border-radius:8px;padding:8px 10px;margin-bottom:0.75rem;"></p>
+
+  <div style="display:flex;gap:8px;margin-bottom:0.75rem;">
+    <button id="export-btn" style="flex:1;font-size:12px;color:var(--text-2);">สำรองข้อมูล</button>
+    <button id="import-btn" style="flex:1;font-size:12px;color:var(--text-2);">นำเข้าข้อมูล</button>
+  </div>
+  <div id="backup-panel" style="display:none;background:var(--bg-card);border-radius:12px;padding:1rem;margin-bottom:0.75rem;">
+    <textarea id="backup-text" rows="4" style="width:100%;font-size:12px;font-family:monospace;box-sizing:border-box;" placeholder="วางข้อมูลสำรองที่นี่แล้วกดโหลด"></textarea>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <button id="backup-copy" style="flex:1;font-size:12px;">คัดลอก</button>
+      <button id="backup-load" style="flex:1;font-size:12px;">โหลดข้อมูลนี้</button>
+    </div>
+    <p id="backup-msg" style="font-size:12px;color:var(--text-2);margin:8px 0 0;"></p>
+  </div>
+
+  <button id="reset-btn" style="width:100%;font-size:13px;color:var(--text-2);margin-bottom:1.5rem;">ล้างข้อมูลทั้งหมด</button>
+
+  <p style="font-size:13px;font-weight:500;margin:0 0 8px;">เติม JEPQ รายเดือน</p>
+  <p style="font-size:11px;color:var(--text-3);margin:0 0 10px;">ยอดที่เติมจะบวกสะสมรวมกับพอร์ตด้านบน</p>
+  <div id="months"></div>
+
+</div>
+
+<script>
+const START = new Date(2026,8,1);
+const END = new Date(2028,9,1);
+const BREAK_MONTHS = ["2026-11","2026-12","2027-01"];
+const CASH_TARGET = 400;
+const GOAL_TOTAL = 35787;
+const GOALS_DEFS = {
+  house:   { label:"ดาวน์บ้าน + ค่าโอน", target: 16061 },
+  car:     { label:"ดาวน์รถมือสอง (SUV)", target: 3409 },
+  wedding: { label:"งบงานแต่งงาน (ระดับกลาง)", target: 16667 }
+};
+const DEFAULT_ORDER = ["house","car","wedding"];
+const DEFAULT_PORTFOLIO = {
+  JEPQ: { shares: 25.26, price: 59.78 },
+  CHPY: { shares: 13.24, price: 55.00 },
+  QBTS: { shares: 153,   price: 20.00 },
+  SPY:  { shares: 1.02,  price: 764.44 },
+  AMD:  { shares: 1.00,  price: 495.00 }
+};
+const HOLDINGS = Object.keys(DEFAULT_PORTFOLIO);
+const PRICE_API_BASE = "https://api.twelvedata.com/price";
+
+function ym(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0"); }
+function monthIndex(d){ return d.getFullYear()*12 + d.getMonth(); }
+function label(d){
+  const th = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+  return th[d.getMonth()] + " " + d.getFullYear();
+}
+function fmt(n){ return Number(n||0).toLocaleString(undefined,{maximumFractionDigits:0}); }
+
+let months = [];
+for(let d=new Date(START); d<END; d.setMonth(d.getMonth()+1)){
+  months.push(new Date(d));
+}
+const now = new Date();
+const nowIdx = monthIndex(now);
+
+let goalOrder = DEFAULT_ORDER.slice();
+let data = {};
+let portfolio = {};
+let priceApiKey = "";
+
+async function loadGoalOrder(){
+  try{
+    const r = await window.storage.get("goals:order", false);
+    const parsed = r ? JSON.parse(r.value) : null;
+    if(parsed && Array.isArray(parsed.order) && parsed.order.length===DEFAULT_ORDER.length){
+      goalOrder = parsed.order;
+    }
+  }catch(e){ /* keep default */ }
+}
+
+async function saveGoalOrder(){
+  try{ await window.storage.set("goals:order", JSON.stringify({order:goalOrder}), false); }catch(e){}
+}
+
+function moveGoal(key, dir){
+  const idx = goalOrder.indexOf(key);
+  const swapIdx = idx + dir;
+  if(swapIdx < 0 || swapIdx >= goalOrder.length) return;
+  [goalOrder[idx], goalOrder[swapIdx]] = [goalOrder[swapIdx], goalOrder[idx]];
+  saveGoalOrder();
+  renderStats();
+}
+let bankingCash = 3000;
+
+async function loadBanking(){
+  try{
+    const r = await window.storage.get("banking:cash", false);
+    bankingCash = r ? JSON.parse(r.value).amount : 3000;
+  }catch(e){ bankingCash = 3000; }
+}
+
+async function saveBanking(){
+  const ok = await (async function retry(attempt){
+    attempt = attempt || 1;
+    try{
+      const result = await window.storage.set("banking:cash", JSON.stringify({amount: bankingCash}), false);
+      if(!result) throw new Error("no result");
+      return true;
+    }catch(e){
+      if(attempt<3){ await new Promise(r=>setTimeout(r,400*attempt)); return retry(attempt+1); }
+      return false;
+    }
+  })();
+  showSaveStatus(ok);
+  renderStats();
+}
+
+async function loadPortfolio(){
+  try{
+    const r = await window.storage.get("portfolio:now", false);
+    portfolio = r ? JSON.parse(r.value) : null;
+  }catch(e){ portfolio = null; }
+  if(!portfolio) portfolio = {};
+  HOLDINGS.forEach(h=>{
+    if(!portfolio[h]) portfolio[h] = { shares: DEFAULT_PORTFOLIO[h].shares, price: DEFAULT_PORTFOLIO[h].price };
+  });
+}
+
+async function savePortfolio(){
+  const ok = await (async function retry(attempt){
+    attempt = attempt || 1;
+    try{
+      const result = await window.storage.set("portfolio:now", JSON.stringify(portfolio), false);
+      if(!result) throw new Error("no result");
+      return true;
+    }catch(e){
+      if(attempt<3){ await new Promise(r=>setTimeout(r,400*attempt)); return retry(attempt+1); }
+      return false;
+    }
+  })();
+  showSaveStatus(ok);
+  renderPortfolioTotal();
+  renderStats();
+}
+
+async function loadPriceApiKey(){
+  try{
+    const r = await window.storage.get("settings:priceApiKey", false);
+    priceApiKey = r ? JSON.parse(r.value).key : "";
+  }catch(e){ priceApiKey = ""; }
+}
+
+async function savePriceApiKey(){
+  try{ await window.storage.set("settings:priceApiKey", JSON.stringify({key: priceApiKey}), false); }catch(e){}
+}
+
+function setPriceStatus(msg, isError){
+  const el = document.getElementById("price-status");
+  if(!el) return;
+  el.textContent = msg;
+  el.style.color = isError ? "var(--danger)" : "var(--text-3)";
+}
+
+async function fetchLivePrices(){
+  const keyInput = document.getElementById("api-key");
+  const key = (keyInput.value || "").trim();
+  if(!key){
+    setPriceStatus("กรุณาใส่ API key ก่อน (ขอฟรีได้ที่ twelvedata.com)", true);
+    return;
+  }
+  priceApiKey = key;
+  savePriceApiKey();
+
+  const btn = document.getElementById("refresh-prices-btn");
+  const originalLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "กำลังดึงราคา...";
+  setPriceStatus("กำลังดึงราคาล่าสุด...", false);
+
+  try{
+    const url = PRICE_API_BASE + "?symbol=" + encodeURIComponent(HOLDINGS.join(",")) + "&apikey=" + encodeURIComponent(key);
+    const res = await fetch(url);
+    const json = await res.json();
+
+    if(json && json.status === "error"){
+      throw new Error(json.message || "ดึงราคาไม่สำเร็จ");
+    }
+
+    let updated = 0;
+    HOLDINGS.forEach(h=>{
+      const entry = HOLDINGS.length===1 ? json : json[h];
+      const price = entry && entry.price!=null ? Number(entry.price) : NaN;
+      if(!isNaN(price) && price>0){
+        if(!portfolio[h]) portfolio[h] = { shares:"", price:"" };
+        portfolio[h].price = price;
+        updated++;
+      }
+    });
+
+    if(updated===0){
+      throw new Error("ไม่พบราคาหุ้นที่ตรงกัน ตรวจสอบ API key หรือโควต้าการใช้งาน");
+    }
+
+    await savePortfolio();
+    renderPortfolioInputs();
+    const stamp = new Date().toLocaleTimeString("th-TH", {hour:"2-digit", minute:"2-digit"});
+    setPriceStatus("อัพเดทราคาแล้ว " + updated + "/" + HOLDINGS.length + " ตัว · " + stamp, false);
+  }catch(e){
+    setPriceStatus("ดึงราคาไม่สำเร็จ: " + e.message, true);
+  }finally{
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+  }
+}
+
+function portfolioTotal(){
+  let total = 0;
+  HOLDINGS.forEach(h=>{
+    const hv = portfolio[h];
+    if(!hv) return;
+    total += (Number(hv.shares)||0) * (Number(hv.price)||0);
+  });
+  return total;
+}
+
+function renderPortfolioTotal(){
+  document.getElementById("portfolio-total").textContent = "$" + fmt(portfolioTotal());
+}
+
+function renderPortfolioInputs(){
+  const wrap = document.getElementById("portfolio-now");
+  wrap.innerHTML = HOLDINGS.map(h=>{
+    const hv = portfolio[h] || {shares:"",price:""};
+    const val = (Number(hv.shares)||0) * (Number(hv.price)||0);
+    return `
+      <div style="display:grid;grid-template-columns:44px 1fr 1fr 64px;align-items:center;gap:6px;margin-bottom:6px;">
+        <span style="font-size:12px;color:var(--text-2);">${h}</span>
+        <input type="number" inputmode="decimal" value="${hv.shares}" data-holding="${h}" data-part="shares" placeholder="หุ้น" style="font-size:12px;width:100%;box-sizing:border-box;" />
+        <input type="number" inputmode="decimal" value="${hv.price}" data-holding="${h}" data-part="price" placeholder="ราคา" style="font-size:12px;width:100%;box-sizing:border-box;" />
+        <span style="font-size:11px;color:var(--text-3);text-align:right;">$${fmt(val)}</span>
+      </div>
+    `;
+  }).join("");
+
+  wrap.querySelectorAll("input").forEach(el=>{
+    el.addEventListener("change", e=>{
+      const {holding, part} = e.target.dataset;
+      if(!portfolio[holding]) portfolio[holding] = {shares:"",price:""};
+      portfolio[holding][part] = e.target.value;
+      savePortfolio();
+      renderPortfolioInputs();
+    });
+  });
+}
+
+async function loadAll(){
+  for(const d of months){
+    const key = "month:"+ym(d);
+    let existing = null;
+    try{
+      const r = await window.storage.get(key, false);
+      existing = r ? JSON.parse(r.value) : null;
+    }catch(e){ existing = null; }
+    data[key] = existing || { jepqAdd:"", cash:false, note:"" };
+  }
+  render();
+}
+
+async function saveWithRetry(key, attempt){
+  attempt = attempt || 1;
+  try{
+    const result = await window.storage.set(key, JSON.stringify(data[key]), false);
+    if(!result) throw new Error("no result returned");
+    return true;
+  }catch(e){
+    if(attempt < 3){
+      await new Promise(r=>setTimeout(r, 400*attempt));
+      return saveWithRetry(key, attempt+1);
+    }
+    return false;
+  }
+}
+
+async function save(key){
+  const ok = await saveWithRetry(key);
+  showSaveStatus(ok);
+  renderStats();
+}
+
+function showSaveStatus(ok){
+  const el = document.getElementById("save-status");
+  if(!el) return;
+  if(ok){ el.style.display = "none"; }
+  else {
+    el.style.display = "block";
+    el.textContent = "บันทึกไม่สำเร็จ (เซิร์ฟเวอร์ขัดข้องชั่วคราว) — ลองแก้ช่องเดิมอีกครั้งเพื่อลองใหม่";
+  }
+}
+
+function renderStats(){
+  let totalJepqAdd = 0, cashMonths = 0;
+  for(const d of months){
+    const key="month:"+ym(d);
+    const m = data[key];
+    if(!m) continue;
+    totalJepqAdd += Number(m.jepqAdd)||0;
+    if(m.cash) cashMonths++;
+  }
+  const cashSaved = cashMonths*CASH_TARGET;
+  const investedTotal = portfolioTotal() + totalJepqAdd + cashSaved + (Number(bankingCash)||0);
+
+  const pct = Math.max(0, Math.min(100, (investedTotal/GOAL_TOTAL)*100));
+  document.getElementById("progress-pct").textContent = Math.round(pct) + "%";
+  document.getElementById("progress-bar").style.width = pct + "%";
+  document.getElementById("progress-detail").textContent =
+    "$" + fmt(investedTotal) + " จาก $" + fmt(GOAL_TOTAL) + " (พอร์ต $" + fmt(portfolioTotal()) + " + เติม JEPQ สะสม $" + fmt(totalJepqAdd) + " + เงินสดออม $" + fmt(cashSaved) + " + Banking $" + fmt(bankingCash) + ")";
+
+  renderGoalBars(investedTotal);
+}
+
+function renderGoalBars(investedTotal){
+  let remaining = investedTotal;
+  const wrap = document.getElementById("goal-bars");
+  wrap.innerHTML = goalOrder.map((key, i)=>{
+    const g = GOALS_DEFS[key];
+    const allocated = Math.max(0, Math.min(remaining, g.target));
+    remaining -= allocated;
+    const gpct = Math.round((allocated/g.target)*100);
+    const done = gpct >= 100;
+    const isFirst = i===0, isLast = i===goalOrder.length-1;
+    return `
+      <div style="background:var(--bg-card);border-radius:12px;padding:0.9rem 1rem;margin-bottom:8px;box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:11px;font-weight:600;color:var(--accent);background:var(--accent-bg);width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${i+1}</span>
+            <span style="font-size:13px;font-weight:500;">${g.label}</span>
+          </div>
+          <span style="font-size:12px;color:${done ? "var(--accent)" : "var(--text-2)"};font-weight:${done?"600":"400"};">
+            ${done ? "พร้อมแล้ว ✓" : gpct + "%"}
+          </span>
+        </div>
+        <div style="height:6px;background:var(--bg-card-2);border-radius:6px;overflow:hidden;">
+          <div style="height:100%;width:${gpct}%;background:var(--accent);border-radius:6px;transition:width 0.3s;"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
+          <p style="font-size:11px;color:var(--text-3);margin:0;">$${fmt(allocated)} จาก $${fmt(g.target)}</p>
+          <div style="display:flex;gap:4px;">
+            <button data-goal="${key}" data-dir="-1" ${isFirst?"disabled":""} style="padding:2px 9px;font-size:12px;opacity:${isFirst?0.35:1};">▲</button>
+            <button data-goal="${key}" data-dir="1" ${isLast?"disabled":""} style="padding:2px 9px;font-size:12px;opacity:${isLast?0.35:1};">▼</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  wrap.querySelectorAll("button[data-goal]").forEach(btn=>{
+    btn.addEventListener("click", e=>{
+      const key = e.currentTarget.dataset.goal;
+      const dir = Number(e.currentTarget.dataset.dir);
+      moveGoal(key, dir);
+    });
+  });
+}
+
+function render(){
+  renderPortfolioInputs();
+  renderPortfolioTotal();
+  const bankEl = document.getElementById("banking-cash");
+  if(bankEl.value === "") bankEl.value = bankingCash;
+  renderStats();
+
+  const wrap = document.getElementById("months");
+  wrap.innerHTML = "";
+
+  months.forEach(d=>{
+    const key = "month:"+ym(d);
+    const isBreak = BREAK_MONTHS.includes(ym(d));
+    const idx = monthIndex(d);
+    const isCurrent = idx===nowIdx;
+    const m = data[key];
+
+    const card = document.createElement("div");
+    card.style.cssText = "border-radius:14px;padding:0.85rem 1rem;margin-bottom:8px;background:var(--bg-card);box-shadow:0 1px 2px rgba(0,0,0,0.04);"
+      + (isCurrent ? "border:1.5px solid var(--accent);" : "border:0.5px solid var(--border-c);");
+
+    const cashRow = isBreak
+      ? `<p style="font-size:12px;color:var(--text-3);margin:8px 0 0;">ช่วงพักไทย — ไม่ได้เก็บเงินสดเดือนนี้</p>`
+      : `<label style="display:flex;align-items:center;gap:9px;font-size:14px;margin-top:8px;">
+           <input type="checkbox" ${m.cash?"checked":""} data-key="${key}" data-field="cash" style="width:18px;height:18px;flex-shrink:0;" />
+           <span>เก็บเงินสด $${CASH_TARGET}</span>
+         </label>`;
+
+    card.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <p style="font-size:14px;font-weight:500;margin:0;">${label(d)}</p>
+        ${isCurrent ? `<span style="font-size:11px;font-weight:500;color:var(--accent);background:var(--accent-bg);padding:2px 8px;border-radius:20px;">เดือนนี้</span>` : ""}
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:13px;color:var(--text-2);white-space:nowrap;">เติม JEPQ ($)</span>
+        <input type="number" inputmode="decimal" value="${m.jepqAdd}" data-key="${key}" data-field="jepqAdd" placeholder="0" style="flex:1;font-size:14px;" />
+      </div>
+      ${cashRow}
+    `;
+    wrap.appendChild(card);
+  });
+
+  wrap.querySelectorAll("input[data-field=jepqAdd]").forEach(el=>{
+    el.addEventListener("change", e=>{
+      const {key, field} = e.target.dataset;
+      data[key][field] = e.target.value;
+      save(key);
+    });
+  });
+  wrap.querySelectorAll("input[type=checkbox]").forEach(el=>{
+    el.addEventListener("change", e=>{
+      const {key, field} = e.target.dataset;
+      data[key][field] = e.target.checked;
+      save(key);
+    });
+  });
+}
+
+document.getElementById("refresh-prices-btn").addEventListener("click", fetchLivePrices);
+
+document.getElementById("reset-btn").addEventListener("click", async ()=>{
+  goalOrder = DEFAULT_ORDER.slice();
+  try{ await window.storage.set("goals:order", JSON.stringify({order:goalOrder}), false); }catch(e){}
+  HOLDINGS.forEach(h=>{ portfolio[h] = { shares: DEFAULT_PORTFOLIO[h].shares, price: DEFAULT_PORTFOLIO[h].price }; });
+  try{ await window.storage.set("portfolio:now", JSON.stringify(portfolio), false); }catch(e){}
+  bankingCash = 3000;
+  try{ await window.storage.set("banking:cash", JSON.stringify({amount:3000}), false); }catch(e){}
+  for(const d of months){
+    const key = "month:"+ym(d);
+    data[key] = { jepqAdd:"", cash:false, note:"" };
+    try{ await window.storage.set(key, JSON.stringify(data[key]), false); }catch(e){}
+  }
+  render();
+});
+
+document.getElementById("export-btn").addEventListener("click", ()=>{
+  document.getElementById("backup-panel").style.display = "block";
+  document.getElementById("backup-text").value = JSON.stringify({portfolio, banking:{amount:bankingCash}, goalOrder, months:data});
+  document.getElementById("backup-msg").textContent = "คัดลอกข้อความนี้เก็บไว้ แล้วมากด \"นำเข้าข้อมูล\" ในอีกเครื่องเพื่อโหลดกลับ";
+});
+
+document.getElementById("import-btn").addEventListener("click", ()=>{
+  const panel = document.getElementById("backup-panel");
+  panel.style.display = panel.style.display==="none" ? "block" : "none";
+  document.getElementById("backup-text").value = "";
+  document.getElementById("backup-msg").textContent = "วางข้อมูลสำรองที่คัดลอกไว้จากอีกเครื่อง แล้วกดโหลดข้อมูลนี้";
+});
+
+document.getElementById("backup-copy").addEventListener("click", async ()=>{
+  const ta = document.getElementById("backup-text");
+  ta.select();
+  try{
+    await navigator.clipboard.writeText(ta.value);
+    document.getElementById("backup-msg").textContent = "คัดลอกแล้ว";
+  }catch(e){
+    document.getElementById("backup-msg").textContent = "คัดลอกอัตโนมัติไม่ได้ ลองกดค้างที่ข้อความแล้วเลือกคัดลอกเอง";
+  }
+});
+
+document.getElementById("backup-load").addEventListener("click", async ()=>{
+  const msg = document.getElementById("backup-msg");
+  let parsed;
+  try{
+    parsed = JSON.parse(document.getElementById("backup-text").value);
+  }catch(e){
+    msg.textContent = "ข้อมูลที่วางไม่ถูกต้อง ตรวจสอบว่าคัดลอกมาครบหรือไม่";
+    return;
+  }
+  msg.textContent = "กำลังโหลด...";
+  let successCount = 0, failCount = 0;
+  if(parsed.portfolio){
+    portfolio = parsed.portfolio;
+    try{ await window.storage.set("portfolio:now", JSON.stringify(portfolio), false); successCount++; }catch(e){ failCount++; }
+  }
+  if(parsed.banking){
+    bankingCash = parsed.banking.amount;
+    try{ await window.storage.set("banking:cash", JSON.stringify(parsed.banking), false); successCount++; }catch(e){ failCount++; }
+  }
+  if(parsed.goalOrder && Array.isArray(parsed.goalOrder)){
+    goalOrder = parsed.goalOrder;
+    try{ await window.storage.set("goals:order", JSON.stringify({order:goalOrder}), false); successCount++; }catch(e){ failCount++; }
+  }
+  if(parsed.months){
+    for(const key in parsed.months){
+      data[key] = parsed.months[key];
+      const ok = await saveWithRetry(key);
+      if(ok) successCount++; else failCount++;
+    }
+  }
+  render();
+  msg.textContent = failCount===0
+    ? `โหลดสำเร็จ ${successCount} รายการ`
+    : `โหลดสำเร็จ ${successCount} รายการ, ล้มเหลว ${failCount} รายการ (ลองกดโหลดข้อมูลนี้อีกครั้ง)`;
+});
+
+(async function init(){
+  await loadGoalOrder();
+  await loadPortfolio();
+  await loadBanking();
+  await loadPriceApiKey();
+  if(priceApiKey) document.getElementById("api-key").value = priceApiKey;
+  await loadAll();
+  document.getElementById("banking-cash").addEventListener("change", e=>{
+    bankingCash = e.target.value;
+    saveBanking();
+  });
+})();
+</script>
