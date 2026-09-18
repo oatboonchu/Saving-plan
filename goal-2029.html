@@ -273,6 +273,40 @@ function mcpErrorMessage(code){
   }
 }
 
+function unwrapPriceValue(val){
+  if(typeof val === "string"){
+    try{ const parsed = JSON.parse(val); if(parsed && typeof parsed === "object") val = parsed; }catch(e){}
+  }
+  if(val && typeof val === "object" && typeof val.result === "string") val = val.result;
+  return val;
+}
+
+function parsePriceFromText(text){
+  const lines = String(text||"").trim().split("\n").filter(Boolean);
+  const lastLine = lines[lines.length-1] || "";
+  const num = Number(lastLine.split(/[,;]/).pop());
+  return num;
+}
+
+function extractPrice(callResult){
+  const candidates = [];
+  if(callResult){
+    if(callResult.payload !== undefined) candidates.push(callResult.payload);
+    if(Array.isArray(callResult.content)){
+      callResult.content.forEach(b=>{ if(b && typeof b.text === "string") candidates.push(b.text); });
+    }
+  }
+  for(let val of candidates){
+    val = unwrapPriceValue(val);
+    if(typeof val === "number" && val>0) return val;
+    if(typeof val === "string"){
+      const num = parsePriceFromText(val);
+      if(!isNaN(num) && num>0) return num;
+    }
+  }
+  return NaN;
+}
+
 async function fetchLivePrices(){
   if(!mcp){
     setPriceStatus("หน้านี้ยังใช้ Twelve Data connector ไม่ได้ (ต้องเปิดผ่าน Claude)", true);
@@ -294,9 +328,7 @@ async function fetchLivePrices(){
   results.forEach((r, i)=>{
     const h = HOLDINGS[i];
     if(r.status === "fulfilled"){
-      const raw = r.value.payload && r.value.payload.result;
-      const lines = String(raw||"").trim().split("\n");
-      const price = Number(lines[lines.length-1]);
+      const price = extractPrice(r.value);
       if(!isNaN(price) && price>0){
         if(!portfolio[h]) portfolio[h] = { shares:"", price:"" };
         portfolio[h].price = price;
