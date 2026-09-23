@@ -325,9 +325,11 @@ async function fetchLivePrices(){
 
   let updated = 0;
   let errCode = null;
+  let firstFulfilled = null;
   results.forEach((r, i)=>{
     const h = HOLDINGS[i];
     if(r.status === "fulfilled"){
+      if(!firstFulfilled) firstFulfilled = r.value;
       const price = extractPrice(r.value);
       if(!isNaN(price) && price>0){
         if(!portfolio[h]) portfolio[h] = { shares:"", price:"" };
@@ -349,6 +351,10 @@ async function fetchLivePrices(){
     setPriceStatus("อัพเดทราคาแล้วครบ " + updated + " ตัว · " + stamp, false);
   } else if(updated>0){
     setPriceStatus("อัพเดทราคาแล้ว " + updated + "/" + HOLDINGS.length + " ตัว · " + stamp, false);
+  } else if(firstFulfilled){
+    let raw;
+    try{ raw = JSON.stringify(firstFulfilled); }catch(e){ raw = String(firstFulfilled); }
+    setPriceStatus("แกะราคาไม่ได้ (รูปแบบข้อมูลไม่ตรง) ผลลัพธ์ดิบ: " + raw.slice(0,300), true);
   } else {
     setPriceStatus(mcpErrorMessage(errCode), true);
   }
