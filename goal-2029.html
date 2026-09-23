@@ -288,6 +288,21 @@ function parsePriceFromText(text){
   return num;
 }
 
+function textFromResult(callResult){
+  const candidates = [];
+  if(callResult){
+    if(callResult.payload !== undefined) candidates.push(callResult.payload);
+    if(Array.isArray(callResult.content)){
+      callResult.content.forEach(b=>{ if(b && typeof b.text === "string") candidates.push(b.text); });
+    }
+  }
+  for(let val of candidates){
+    val = unwrapPriceValue(val);
+    if(typeof val === "string") return val;
+  }
+  return "";
+}
+
 function extractPrice(callResult){
   const candidates = [];
   if(callResult){
@@ -307,6 +322,8 @@ function extractPrice(callResult){
   return NaN;
 }
 
+const PRICE_FETCH_GAP_MS = 15000;
+
 async function fetchLivePrices(){
   if(!mcp){
     setPriceStatus("หน้านี้ยังใช้ Twelve Data connector ไม่ได้ (ต้องเปิดผ่าน Claude)", true);
@@ -316,30 +333,39 @@ async function fetchLivePrices(){
   const btn = document.getElementById("refresh-prices-btn");
   const originalLabel = btn.textContent;
   btn.disabled = true;
-  btn.textContent = "กำลังดึงราคา...";
-  setPriceStatus("กำลังดึงราคาล่าสุด...", false);
-
-  const results = await Promise.allSettled(
-    HOLDINGS.map(h => mcp.callTool(PRICE_SERVER, "get_price", { symbol: h }, { cache: { refresh: true } }))
-  );
 
   let updated = 0;
   let errCode = null;
-  let firstFulfilled = null;
-  results.forEach((r, i)=>{
+  let rateLimited = false;
+  let rawIssue = "";
+
+  for(let i=0; i<HOLDINGS.length; i++){
     const h = HOLDINGS[i];
-    if(r.status === "fulfilled"){
-      if(!firstFulfilled) firstFulfilled = r.value;
-      const price = extractPrice(r.value);
+    btn.textContent = "กำลังดึงราคา " + (i+1) + "/" + HOLDINGS.length + "...";
+    setPriceStatus("กำลังดึงราคา " + h + " (" + (i+1) + "/" + HOLDINGS.length + ")...", false);
+    try{
+      const res = await mcp.callTool(PRICE_SERVER, "get_price", { symbol: h }, { cache: { refresh: true } });
+      const price = extractPrice(res);
       if(!isNaN(price) && price>0){
         if(!portfolio[h]) portfolio[h] = { shares:"", price:"" };
         portfolio[h].price = price;
         updated++;
+      } else {
+        const text = textFromResult(res);
+        if(/api credit|rate limit/i.test(text)){
+          rateLimited = true;
+          break;
+        }
+        rawIssue = text;
       }
-    } else {
-      errCode = r.reason && r.reason.code;
+    }catch(e){
+      errCode = e && e.code;
+      if(errCode === "rate_limited"){ rateLimited = true; break; }
     }
-  });
+    if(!rateLimited && i < HOLDINGS.length-1){
+      await new Promise(r=>setTimeout(r, PRICE_FETCH_GAP_MS));
+    }
+  }
 
   if(updated>0){
     await savePortfolio();
@@ -349,14 +375,16 @@ async function fetchLivePrices(){
   const stamp = new Date().toLocaleTimeString("th-TH", {hour:"2-digit", minute:"2-digit"});
   if(updated === HOLDINGS.length){
     setPriceStatus("อัพเดทราคาแล้วครบ " + updated + " ตัว · " + stamp, false);
+  } else if(rateLimited){
+    setPriceStatus("อัพเดทราคาแล้ว " + updated + "/" + HOLDINGS.length + " ตัว — เกินโควต้า API ต่อนาที รอสักครู่แล้วกด \"ดึงราคาล่าสุด\" อีกครั้งเพื่อดึงที่เหลือ · " + stamp, true);
   } else if(updated>0){
     setPriceStatus("อัพเดทราคาแล้ว " + updated + "/" + HOLDINGS.length + " ตัว · " + stamp, false);
-  } else if(firstFulfilled){
-    let raw;
-    try{ raw = JSON.stringify(firstFulfilled); }catch(e){ raw = String(firstFulfilled); }
-    setPriceStatus("แกะราคาไม่ได้ (รูปแบบข้อมูลไม่ตรง) ผลลัพธ์ดิบ: " + raw.slice(0,300), true);
-  } else {
+  } else if(errCode){
     setPriceStatus(mcpErrorMessage(errCode), true);
+  } else if(rawIssue){
+    setPriceStatus("แกะราคาไม่ได้: " + rawIssue.slice(0,200), true);
+  } else {
+    setPriceStatus(mcpErrorMessage(null), true);
   }
 
   btn.disabled = false;
