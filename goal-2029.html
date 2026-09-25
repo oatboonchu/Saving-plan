@@ -93,7 +93,7 @@
   <div style="background:var(--bg-card);border-radius:14px;padding:1rem 1.1rem;margin-bottom:0.65rem;box-shadow:0 1px 2px rgba(0,0,0,0.04);">
     <p style="font-size:14px;font-weight:500;margin:0 0 10px;">พอร์ตหุ้น</p>
 
-    <p id="price-status" style="font-size:11px;color:var(--text-3);margin:0 0 10px;">ราคาอัพเดทอัตโนมัติวันละครั้งหลังตลาดสหรัฐปิด</p>
+    <p id="price-status" style="font-size:11px;color:var(--text-3);margin:0 0 10px;">ราคาอัพเดทเมื่อสั่ง Claude ในแชทว่า "อัพเดทราคา"</p>
 
     <div style="display:grid;grid-template-columns:44px 1fr 1fr 64px;gap:6px;margin-bottom:6px;">
       <span></span>
@@ -106,7 +106,7 @@
     <p style="font-size:14px;font-weight:600;margin:0;display:flex;justify-content:space-between;">
       <span>รวมพอร์ต</span><span id="portfolio-total">$0</span>
     </p>
-    <p style="font-size:11px;color:var(--text-3);margin:6px 0 0;">จำนวนหุ้นแก้ไขเองได้เสมอ · ราคาที่แก้เองจะถูกแทนที่ด้วยราคาจริงในรอบอัพเดทถัดไป</p>
+    <p style="font-size:11px;color:var(--text-3);margin:6px 0 0;">จำนวนหุ้นแก้ไขเองได้เสมอ · ราคาที่แก้เองจะถูกแทนที่ด้วยราคาจริงเมื่ออัพเดทครั้งถัดไป</p>
   </div>
 
   <div style="background:var(--bg-card);border-radius:14px;padding:1rem 1.1rem;margin-bottom:1.25rem;box-shadow:0 1px 2px rgba(0,0,0,0.04);">
@@ -251,7 +251,7 @@ async function savePortfolio(){
 function applyFetchedPrices(doc){
   const el = document.getElementById("price-status");
   if(!doc || !doc.prices){
-    el.textContent = "ยังไม่มีราคาจากการอัพเดทอัตโนมัติ (จะอัพเดทหลังตลาดสหรัฐปิดรอบถัดไป)";
+    el.textContent = "ยังไม่มีราคาล่าสุด สั่ง Claude ในแชทว่า \"อัพเดทราคา\"";
     return;
   }
   HOLDINGS.forEach(h=>{
@@ -263,8 +263,8 @@ function applyFetchedPrices(doc){
   });
   const t = doc.updatedAt ? new Date(doc.updatedAt) : null;
   el.textContent = t && !isNaN(t)
-    ? "ราคาอัพเดทล่าสุด " + t.toLocaleString("th-TH", {day:"numeric", month:"short", hour:"2-digit", minute:"2-digit"}) + " · อัพเดทอัตโนมัติวันละครั้งหลังตลาดสหรัฐปิด"
-    : "ราคาอัพเดทอัตโนมัติวันละครั้งหลังตลาดสหรัฐปิด";
+    ? "ราคาอัพเดทล่าสุด " + t.toLocaleString("th-TH", {day:"numeric", month:"short", hour:"2-digit", minute:"2-digit"}) + " · สั่ง Claude ในแชทว่า \"อัพเดทราคา\" เพื่ออัพเดท"
+    : "สั่ง Claude ในแชทว่า \"อัพเดทราคา\" เพื่ออัพเดท";
 }
 
 function watchFetchedPrices(){
