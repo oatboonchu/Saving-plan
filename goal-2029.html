@@ -185,7 +185,8 @@ async function dbGet(path){
   if(!db) return null;
   try{
     const snap = await db.doc(path).get();
-    return snap.exists ? snap.data() : null;
+    // snapshot data is frozen; clone so callers can mutate it
+    return snap.exists ? JSON.parse(JSON.stringify(snap.data())) : null;
   }catch(e){ return null; }
 }
 
