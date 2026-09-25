@@ -93,10 +93,7 @@
   <div style="background:var(--bg-card);border-radius:14px;padding:1rem 1.1rem;margin-bottom:0.65rem;box-shadow:0 1px 2px rgba(0,0,0,0.04);">
     <p style="font-size:14px;font-weight:500;margin:0 0 10px;">พอร์ตหุ้น</p>
 
-    <div style="display:flex;align-items:center;justify-content:flex-end;margin-bottom:10px;">
-      <button id="refresh-prices-btn" style="font-size:12px;white-space:nowrap;color:var(--accent);">ดึงราคาล่าสุด</button>
-    </div>
-    <p id="price-status" style="font-size:11px;color:var(--text-3);margin:0 0 10px;">กดปุ่ม "ดึงราคาล่าสุด" เพื่อดึงราคาหุ้นจริงผ่าน Twelve Data connector (ไม่ดึงอัตโนมัติ ประหยัดโควต้า)</p>
+    <p id="price-status" style="font-size:11px;color:var(--text-3);margin:0 0 10px;">ราคาอัพเดทอัตโนมัติวันละครั้งหลังตลาดสหรัฐปิด</p>
 
     <div style="display:grid;grid-template-columns:44px 1fr 1fr 64px;gap:6px;margin-bottom:6px;">
       <span></span>
@@ -109,7 +106,7 @@
     <p style="font-size:14px;font-weight:600;margin:0;display:flex;justify-content:space-between;">
       <span>รวมพอร์ต</span><span id="portfolio-total">$0</span>
     </p>
-    <p style="font-size:11px;color:var(--text-3);margin:6px 0 0;">จำนวนหุ้นแก้ไขเองได้เสมอ · ราคาดึงจาก API อัตโนมัติ หรือแก้เองได้ถ้าต้องการ</p>
+    <p style="font-size:11px;color:var(--text-3);margin:6px 0 0;">จำนวนหุ้นแก้ไขเองได้เสมอ · ราคาที่แก้เองจะถูกแทนที่ด้วยราคาจริงในรอบอัพเดทถัดไป</p>
   </div>
 
   <div style="background:var(--bg-card);border-radius:14px;padding:1rem 1.1rem;margin-bottom:1.25rem;box-shadow:0 1px 2px rgba(0,0,0,0.04);">
@@ -163,7 +160,6 @@ const DEFAULT_PORTFOLIO = {
   AMD:  { shares: 1.00,  price: 495.00 }
 };
 const HOLDINGS = Object.keys(DEFAULT_PORTFOLIO);
-const PRICE_SERVER = "Twelve Data";
 
 function ym(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0"); }
 function monthIndex(d){ return d.getFullYear()*12 + d.getMonth(); }
@@ -184,7 +180,6 @@ let goalOrder = DEFAULT_ORDER.slice();
 let data = {};
 let portfolio = {};
 let db = null;
-let mcp = null;
 
 async function dbGet(path){
   if(!db) return null;
@@ -253,142 +248,33 @@ async function savePortfolio(){
   renderStats();
 }
 
-function setPriceStatus(msg, isError){
+function applyFetchedPrices(doc){
   const el = document.getElementById("price-status");
-  if(!el) return;
-  el.textContent = msg;
-  el.style.color = isError ? "var(--danger)" : "var(--text-3)";
-}
-
-function mcpErrorMessage(code){
-  switch(code){
-    case "needs_reauth": return "การเชื่อมต่อ Twelve Data หมดอายุ กรุณาเชื่อมต่อใหม่ใน claude.ai Settings → Connectors";
-    case "server_not_connected": return "ยังไม่ได้เชื่อมต่อ Twelve Data กรุณาเพิ่มใน claude.ai Settings → Connectors";
-    case "selection_required": return "มีการเชื่อมต่อ Twelve Data มากกว่า 1 บัญชี กรุณาเลือกในหน้าต่างที่เด้งขึ้น";
-    case "consent_required": return "กรุณาอนุญาตให้หน้านี้ใช้งาน Twelve Data connector";
-    case "blocked_by_policy": return "องค์กรบล็อกการใช้งาน Twelve Data สำหรับบัญชีนี้";
-    case "approval_required": return "การใช้งาน Twelve Data ต้องรออนุมัติก่อน";
-    case "server_unavailable": return "เซิร์ฟเวอร์ Twelve Data ไม่ตอบสนอง ลองใหม่อีกครั้ง";
-    default: return "ดึงราคาไม่สำเร็จ ลองกด \"ดึงราคาล่าสุด\" อีกครั้ง";
-  }
-}
-
-function unwrapPriceValue(val){
-  if(typeof val === "string"){
-    try{ const parsed = JSON.parse(val); if(parsed && typeof parsed === "object") val = parsed; }catch(e){}
-  }
-  if(val && typeof val === "object" && typeof val.result === "string") val = val.result;
-  return val;
-}
-
-function parsePriceFromText(text){
-  const lines = String(text||"").trim().split("\n").filter(Boolean);
-  const lastLine = lines[lines.length-1] || "";
-  const num = Number(lastLine.split(/[,;]/).pop());
-  return num;
-}
-
-function textFromResult(callResult){
-  const candidates = [];
-  if(callResult){
-    if(callResult.payload !== undefined) candidates.push(callResult.payload);
-    if(Array.isArray(callResult.content)){
-      callResult.content.forEach(b=>{ if(b && typeof b.text === "string") candidates.push(b.text); });
-    }
-  }
-  for(let val of candidates){
-    val = unwrapPriceValue(val);
-    if(typeof val === "string") return val;
-  }
-  return "";
-}
-
-function extractPrice(callResult){
-  const candidates = [];
-  if(callResult){
-    if(callResult.payload !== undefined) candidates.push(callResult.payload);
-    if(Array.isArray(callResult.content)){
-      callResult.content.forEach(b=>{ if(b && typeof b.text === "string") candidates.push(b.text); });
-    }
-  }
-  for(let val of candidates){
-    val = unwrapPriceValue(val);
-    if(typeof val === "number" && val>0) return val;
-    if(typeof val === "string"){
-      const num = parsePriceFromText(val);
-      if(!isNaN(num) && num>0) return num;
-    }
-  }
-  return NaN;
-}
-
-const PRICE_FETCH_GAP_MS = 15000;
-
-async function fetchLivePrices(){
-  if(!mcp){
-    setPriceStatus("หน้านี้ยังใช้ Twelve Data connector ไม่ได้ (ต้องเปิดผ่าน Claude)", true);
+  if(!doc || !doc.prices){
+    el.textContent = "ยังไม่มีราคาจากการอัพเดทอัตโนมัติ (จะอัพเดทหลังตลาดสหรัฐปิดรอบถัดไป)";
     return;
   }
-
-  const btn = document.getElementById("refresh-prices-btn");
-  const originalLabel = btn.textContent;
-  btn.disabled = true;
-
-  let updated = 0;
-  let errCode = null;
-  let rateLimited = false;
-  let rawIssue = "";
-
-  for(let i=0; i<HOLDINGS.length; i++){
-    const h = HOLDINGS[i];
-    btn.textContent = "กำลังดึงราคา " + (i+1) + "/" + HOLDINGS.length + "...";
-    setPriceStatus("กำลังดึงราคา " + h + " (" + (i+1) + "/" + HOLDINGS.length + ")...", false);
-    try{
-      const res = await mcp.callTool(PRICE_SERVER, "get_price", { symbol: h }, { cache: { refresh: true } });
-      const price = extractPrice(res);
-      if(!isNaN(price) && price>0){
-        if(!portfolio[h]) portfolio[h] = { shares:"", price:"" };
-        portfolio[h].price = price;
-        updated++;
-      } else {
-        const text = textFromResult(res);
-        if(/api credit|rate limit/i.test(text)){
-          rateLimited = true;
-          break;
-        }
-        rawIssue = text;
-      }
-    }catch(e){
-      errCode = e && e.code;
-      if(errCode === "rate_limited"){ rateLimited = true; break; }
+  HOLDINGS.forEach(h=>{
+    const p = Number(doc.prices[h]);
+    if(p>0){
+      if(!portfolio[h]) portfolio[h] = { shares:"", price:"" };
+      portfolio[h].price = p;
     }
-    if(!rateLimited && i < HOLDINGS.length-1){
-      await new Promise(r=>setTimeout(r, PRICE_FETCH_GAP_MS));
-    }
-  }
+  });
+  const t = doc.updatedAt ? new Date(doc.updatedAt) : null;
+  el.textContent = t && !isNaN(t)
+    ? "ราคาอัพเดทล่าสุด " + t.toLocaleString("th-TH", {day:"numeric", month:"short", hour:"2-digit", minute:"2-digit"}) + " · อัพเดทอัตโนมัติวันละครั้งหลังตลาดสหรัฐปิด"
+    : "ราคาอัพเดทอัตโนมัติวันละครั้งหลังตลาดสหรัฐปิด";
+}
 
-  if(updated>0){
-    await savePortfolio();
+function watchFetchedPrices(){
+  if(!db) return;
+  db.doc("state/prices").onSnapshot(snap=>{
+    applyFetchedPrices(snap.exists ? snap.data() : null);
     renderPortfolioInputs();
-  }
-
-  const stamp = new Date().toLocaleTimeString("th-TH", {hour:"2-digit", minute:"2-digit"});
-  if(updated === HOLDINGS.length){
-    setPriceStatus("อัพเดทราคาแล้วครบ " + updated + " ตัว · " + stamp, false);
-  } else if(rateLimited){
-    setPriceStatus("อัพเดทราคาแล้ว " + updated + "/" + HOLDINGS.length + " ตัว — เกินโควต้า API ต่อนาที รอสักครู่แล้วกด \"ดึงราคาล่าสุด\" อีกครั้งเพื่อดึงที่เหลือ · " + stamp, true);
-  } else if(updated>0){
-    setPriceStatus("อัพเดทราคาแล้ว " + updated + "/" + HOLDINGS.length + " ตัว · " + stamp, false);
-  } else if(errCode){
-    setPriceStatus(mcpErrorMessage(errCode), true);
-  } else if(rawIssue){
-    setPriceStatus("แกะราคาไม่ได้: " + rawIssue.slice(0,200), true);
-  } else {
-    setPriceStatus(mcpErrorMessage(null), true);
-  }
-
-  btn.disabled = false;
-  btn.textContent = originalLabel;
+    renderPortfolioTotal();
+    renderStats();
+  }, ()=>{});
 }
 
 function portfolioTotal(){
@@ -581,7 +467,6 @@ function render(){
   });
 }
 
-document.getElementById("refresh-prices-btn").addEventListener("click", fetchLivePrices);
 
 document.getElementById("reset-btn").addEventListener("click", async ()=>{
   goalOrder = DEFAULT_ORDER.slice();
@@ -663,7 +548,6 @@ document.getElementById("backup-load").addEventListener("click", async ()=>{
 
 (async function init(){
   db = window.claude ? await window.claude.use("db") : null;
-  mcp = window.claude ? await window.claude.use("mcp") : null;
   await loadGoalOrder();
   await loadPortfolio();
   await loadBanking();
@@ -672,5 +556,6 @@ document.getElementById("backup-load").addEventListener("click", async ()=>{
     bankingCash = e.target.value;
     saveBanking();
   });
+  watchFetchedPrices();
 })();
 </script>
